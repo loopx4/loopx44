@@ -1,16 +1,31 @@
 /**
  * =============================================================================
  * LOOPX UNIFIED DATA SERVICE
+ * src/services/dataService.js
  * =============================================================================
- * Handles all database operations for:
- * - Employee profiles (with case-insensitive duplicate prevention)
- * - Client private links (cryptographically random tokens)
- * - Client form submissions (unique atomic sequential LX-001 queue numbering)
- * - Submission files & status audit history
- * - Team discussion / chat with real-time updates & mentions
- * 
- * Works seamlessly with Supabase when configured, or local fallback storage
- * when awaiting initial Supabase connection.
+ * Central data layer for all application operations:
+ *   - Employee profiles (case-insensitive duplicate prevention)
+ *   - Client private links (cryptographically random tokens)
+ *   - Client form submissions (atomic sequential LX-001 queue numbering)
+ *   - Submission file references and status audit history
+ *   - Team discussion / real-time chat with @mentions
+ *
+ * DUAL MODE OPERATION:
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │  Supabase NOT configured  →  Local Standby Mode             │
+ * │  All data stored in browser localStorage.                   │
+ * │  Data is session-local and cleared with browser data.       │
+ * │  No real-time chat across different browsers/devices.       │
+ * ├─────────────────────────────────────────────────────────────┤
+ * │  Supabase configured      →  Live Database Mode             │
+ * │  All data persisted in Supabase PostgreSQL.                 │
+ * │  Real-time chat via Supabase Realtime channels.             │
+ * │  Atomic queue numbers via get_next_queue_number() RPC.      │
+ * │  File uploads stored in private 'loopx-documents' bucket.   │
+ * └─────────────────────────────────────────────────────────────┘
+ *
+ * TO CONNECT SUPABASE: See src/services/supabaseClient.js for instructions.
+ * TO VIEW DATABASE SCHEMA: See supabase/schema.sql
  * =============================================================================
  */
 
@@ -138,6 +153,21 @@ export const DataService = {
     existingLinks.unshift(linkRecord);
     setLocalItem(STORAGE_KEYS.LINKS, existingLinks);
     return linkRecord;
+  },
+
+  // Returns all links for a given employee profile ID.
+  // Used by EmployeeWorkspace to list links this employee created.
+  async getClientLinks(profileId = null) {
+    if (isSupabaseConfigured && supabase) {
+      let query = supabase.from('client_links').select('*').order('created_at', { ascending: false });
+      if (profileId) query = query.eq('created_by_profile_id', profileId);
+      const { data, error } = await query;
+      if (error) return [];
+      return data || [];
+    }
+    // Local standby mode: read from localStorage, optionally filter by profile
+    const all = getLocalItem(STORAGE_KEYS.LINKS, []);
+    return profileId ? all.filter((l) => l.created_by_profile_id === profileId) : all;
   },
 
   async getClientLinkByToken(token) {

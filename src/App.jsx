@@ -1,6 +1,25 @@
+/*
+ * =============================================================================
+ * LOOPX APPLICATION ROUTER & ACCESS CONTROLLER
+ * src/App.jsx
+ * =============================================================================
+ * Route Hierarchy:
+ * 1. Public Client Submission Portal: /submit/:token (No auth required)
+ * 2. Public Homepage: / (Landing view with "Portal Login" action)
+ * 3. Login Portal: /login (Unified authentication with auto role routing)
+ * 4. Protected Executive Views (Login required):
+ *    - Owner Dashboard: Only accessible with role === 'owner'
+ *    - Employee Workspace: Only accessible with role === 'employee'
+ *
+ * Direct unauthenticated navigation to /owner or /employee automatically
+ * redirects to the login screen, preserving protected status.
+ * =============================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
+import PublicHomePage from './pages/PublicHomePage';
 import LoginPage from './pages/LoginPage';
 import ProfileSelector from './components/ProfileSelector';
 import EmployeeWorkspace from './pages/EmployeeWorkspace';
@@ -16,6 +35,16 @@ export default function App() {
       hash: window.location.hash
     };
   });
+
+  // Client-side navigation helper
+  const navigateTo = (path) => {
+    window.history.pushState({}, '', path);
+    setCurrentRoute({
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash
+    });
+  };
 
   useEffect(() => {
     const handleLocationChange = () => {
@@ -34,12 +63,12 @@ export default function App() {
     };
   }, []);
 
-  // 1. Check for Public Client Submission Route: /submit/:token or #/submit/:token or ?token=:token
-  let clientToken = null;
   const path = currentRoute.pathname;
   const hash = currentRoute.hash;
   const params = new URLSearchParams(currentRoute.search);
 
+  // 1. PUBLIC ROUTE: Client Submission Form (/submit/:token or #/submit/:token or ?token=...)
+  let clientToken = null;
   if (path.startsWith('/submit/')) {
     clientToken = path.replace('/submit/', '').split('/')[0];
   } else if (hash.startsWith('#/submit/')) {
@@ -52,23 +81,31 @@ export default function App() {
     return <ClientSubmissionPage token={clientToken} />;
   }
 
-  // 2. Unauthenticated -> Login Page
-  if (!session) {
-    return <LoginPage />;
+  // 2. AUTHENTICATED ROUTES: Protected Dashboards
+  if (session) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Navbar />
+
+        <main style={{ flex: 1 }}>
+          {isOwner && <OwnerDashboard />}
+
+          {isEmployee && (
+            activeProfile ? <EmployeeWorkspace /> : <ProfileSelector />
+          )}
+        </main>
+      </div>
+    );
   }
 
-  // 3. Authenticated -> Navigation & Role Specific Views
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Navbar />
+  // 3. UNAUTHENTICATED ROUTES
+  // If user navigates explicitly to /login or #/login, or tries to access /owner or /employee:
+  const isLoginPage = path === '/login' || hash === '#/login' || path === '/owner' || path === '/employee';
 
-      <main style={{ flex: 1 }}>
-        {isOwner && <OwnerDashboard />}
+  if (isLoginPage) {
+    return <LoginPage onBackToHome={() => navigateTo('/')} />;
+  }
 
-        {isEmployee && (
-          activeProfile ? <EmployeeWorkspace /> : <ProfileSelector />
-        )}
-      </main>
-    </div>
-  );
+  // Default root path (/) opens the Public Homepage
+  return <PublicHomePage onGoToLogin={() => navigateTo('/login')} />;
 }

@@ -1,15 +1,41 @@
 /**
  * =============================================================================
  * LOOPX AUTHENTICATION & CREDENTIAL CONFIGURATION
+ * src/config/auth.config.js
  * =============================================================================
- * You can edit the credentials below directly in VS Code, or override them
- * in your .env file using VITE_OWNER_* and VITE_EMPLOYEE_* variables.
+ *
+ * ⚠️  SECURITY NOTE FOR DEVELOPERS:
+ * Credentials in VITE_ environment variables are bundled into the browser JS
+ * bundle at build time. This is acceptable for a private internal management
+ * tool (not a public SaaS), but means anyone with access to the built JS can
+ * read them. For a fully secure deployment, replace this with a backend
+ * authentication endpoint (e.g. Supabase Auth, or a serverless function that
+ * verifies credentials server-side before issuing a session token).
+ *
+ * HOW TO CHANGE CREDENTIALS — TWO OPTIONS:
+ *
+ * Option A — Edit this file directly in VS Code:
+ *   Change the string values in SECTION 1 and SECTION 2 below.
+ *
+ * Option B — Use your .env file (recommended for version control safety):
+ *   Edit the .env file in the project root and set:
+ *     VITE_OWNER_USERNAME=YourOwnerUsername
+ *     VITE_OWNER_PASSWORD=YourOwnerPassword
+ *     VITE_EMPLOYEE_USERNAME=YourEmployeeUsername
+ *     VITE_EMPLOYEE_PASSWORD=YourEmployeePassword
+ *   The .env file is excluded from git via .gitignore.
+ *   The .env.example file documents all variables safely (no real passwords).
+ *
+ * NEVER commit real passwords to .env.example or any public GitHub file.
  * =============================================================================
  */
 
 // =============================================================================
 // [SECTION 1] — OWNER CREDENTIALS
-// Edit owner access credentials below.
+// =============================================================================
+// To change the owner login: edit the username and password strings below,
+// OR set VITE_OWNER_USERNAME and VITE_OWNER_PASSWORD in your .env file.
+// The .env variable takes priority over the hardcoded fallback string.
 // =============================================================================
 export const OWNER_CONFIG = {
   username: import.meta.env.VITE_OWNER_USERNAME || 'Jagan',
@@ -27,7 +53,11 @@ export const OWNER_CONFIG = {
 
 // =============================================================================
 // [SECTION 2] — EMPLOYEE CREDENTIALS
-// Edit shared employee workspace entry credentials below.
+// =============================================================================
+// This is the shared team login used by all employees to enter the workspace.
+// To change: edit strings below OR set VITE_EMPLOYEE_USERNAME / VITE_EMPLOYEE_PASSWORD in .env.
+// Individual employee identity is established via their chosen Profile Name
+// inside the workspace — NOT via separate passwords per employee.
 // =============================================================================
 export const EMPLOYEE_CONFIG = {
   username: import.meta.env.VITE_EMPLOYEE_USERNAME || 'Jagan team',

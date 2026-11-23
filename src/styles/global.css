@@ -1,11 +1,31 @@
-/* ==========================================================================
-   LOOPX GLOBAL DESIGN SYSTEM
-   - Pure black background (#000000)
-   - White text (#ffffff)
-   - LoopX Signature Green (#8ee326) bold headings and highlights
-   - Clean Mac-style system font
-   - No gradients, no clutter, high-contrast minimal professional layout
-   ========================================================================== */
+/*
+ * =============================================================================
+ * LOOPX GLOBAL DESIGN SYSTEM
+ * src/styles/global.css
+ * =============================================================================
+ *
+ * DESIGN TOKENS:
+ *   --bg-black              Pure black page background (#000000)
+ *   --bg-surface            Elevated card surfaces (#0a0a0a)
+ *   --color-green           LoopX Signature Lime — primary brand accent (#8ee326)
+ *   --text-white            Primary text (#ffffff)
+ *   --text-muted            Subdued text (#888888)
+ *   --font-system           Mac-style system font stack
+ *   --font-mono             Monospace for tokens, queue numbers, code
+ *
+ * LOGO NOTES:
+ *   The logo PNG is cropped at build time to remove original black margins.
+ *   .nav-logo-img controls the display height in the navbar.
+ *   .login-logo-img controls display on the login page.
+ *   To replace the logo: swap /public/assets/loopx-logo.png with the new file.
+ *   Preserve transparent or black background PNGs for best appearance.
+ *
+ * TYPOGRAPHY:
+ *   h1–h6 use LoopX Signature Lime (#8ee326), bold, uppercase, tight tracking.
+ *   Body text uses white (#ffffff) on pure black (#000000).
+ *   No gradients, no shadows on text, no emojis, no decorative elements.
+ * =============================================================================
+ */
 
 :root {
   --bg-black: #000000;
@@ -322,8 +342,9 @@ label {
   text-decoration: none;
 }
 
+/* Nav logo — cropped PNG has correct proportions; height sets the display size */
 .nav-logo-img {
-  height: 32px;
+  height: 28px;
   width: auto;
   display: block;
 }

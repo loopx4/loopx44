@@ -23,16 +23,14 @@ export default function EmployeeWorkspace() {
     if (!activeProfile) return;
     try {
       setLoading(true);
-      // Load own submissions
+
+      // Load submissions attributed to this employee profile only
       const subs = await DataService.getSubmissions({ profileId: activeProfile.id });
       setSubmissions(subs || []);
 
-      // Load links created by this profile
-      // In Supabase or local storage, filter links by profileId
-      const allLinks = (await DataService.getClientLinkByToken('__all__')) || []; // fallback or custom
-      // We can also retrieve links from localStorage directly or query
-      const localLinks = JSON.parse(localStorage.getItem('loopx_client_links') || '[]');
-      setCreatedLinks(localLinks.filter((l) => l.created_by_profile_id === activeProfile.id));
+      // Load client links created by this profile (Supabase or local standby mode)
+      const links = await DataService.getClientLinks(activeProfile.id);
+      setCreatedLinks(links || []);
     } catch (err) {
       console.error('Failed to load employee data:', err);
     } finally {

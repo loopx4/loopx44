@@ -1,49 +1,38 @@
+/*
+ * =============================================================================
+ * LOOPX NAVBAR COMPONENT
+ * =============================================================================
+ * Shows the LoopX logo, authenticated user badge, profile switcher and logout.
+ *
+ * DEVELOPER NOTE (code comment only):
+ * - Logo src: /public/assets/loopx-logo.png  (replace file to update logo)
+ * - Supabase connection status is intentionally NOT shown in the UI.
+ *   To check connection status, see: src/services/supabaseClient.js
+ * =============================================================================
+ */
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { isSupabaseConfigured } from '../services/supabaseClient';
 
-export default function Navbar({ currentView, onNavigate }) {
+export default function Navbar() {
   const { session, activeProfile, logout, selectEmployeeProfile, isOwner, isEmployee } = useAuth();
 
   return (
     <header className="navbar">
       <div className="nav-brand">
+        {/*
+          LOGO — Uses the official LoopX logo PNG from /public/assets/loopx-logo.png
+          CSS class .nav-logo-img handles cropping of the original image padding.
+          Do not replace this src path without updating the CSS class accordingly.
+        */}
         <img
           src="/assets/loopx-logo.png"
-          alt="LoopX Logo"
+          alt="LoopX"
           className="nav-logo-img"
         />
       </div>
 
       <div className="nav-right">
-        {/* Supabase Status Pill */}
-        <div
-          title={isSupabaseConfigured ? 'Connected to live Supabase backend' : 'Awaiting Supabase keys in .env. Running on local standby mode with zero data.'}
-          style={{
-            fontSize: '11px',
-            fontFamily: 'var(--font-mono)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            backgroundColor: '#0a0a0a',
-            border: `1px solid ${isSupabaseConfigured ? '#234f07' : '#333333'}`,
-            color: isSupabaseConfigured ? 'var(--color-green)' : 'var(--text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
-          <span
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              backgroundColor: isSupabaseConfigured ? 'var(--color-green)' : '#666666'
-            }}
-          />
-          {isSupabaseConfigured ? 'Supabase Live' : 'Supabase: Ready for .env'}
-        </div>
-
-        {/* User / Profile Info */}
+        {/* User / Profile Info — only rendered for authenticated sessions */}
         {session && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {isOwner && (

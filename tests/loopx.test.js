@@ -85,3 +85,19 @@ describe('LoopX Team Chat Mention Detection', () => {
     expect(mentionsFound.length).toBe(2);
   });
 });
+
+describe('LoopX Permission Boundaries', () => {
+  it('ensures employee role cannot view all submissions', () => {
+    const employee = authenticateUser('Jagan team', '123456789');
+    expect(employee.permissions.canViewAllSubmissions).toBe(false);
+    expect(employee.permissions.canCreateClientLinks).toBe(true);
+  });
+
+  it('ensures owner role has comprehensive executive permissions', () => {
+    const owner = authenticateUser('Jagan', '12345678910');
+    expect(owner.permissions.canViewAllSubmissions).toBe(true);
+    expect(owner.permissions.canUpdateAllStatuses).toBe(true);
+    expect(owner.permissions.canViewAnalytics).toBe(true);
+  });
+});
+
