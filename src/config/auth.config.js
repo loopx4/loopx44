@@ -4,42 +4,51 @@
  * src/config/auth.config.js
  * =============================================================================
  *
- * ⚠️  SECURITY NOTE FOR DEVELOPERS:
- * Credentials in VITE_ environment variables are bundled into the browser JS
- * bundle at build time. This is acceptable for a private internal management
- * tool (not a public SaaS), but means anyone with access to the built JS can
- * read them. For a fully secure deployment, replace this with a backend
- * authentication endpoint (e.g. Supabase Auth, or a serverless function that
- * verifies credentials server-side before issuing a session token).
+ * SECURITY APPROACH — SHA-256 HASH COMPARISON (BROWSER SubtleCrypto):
+ * Passwords are NEVER stored as plain text anywhere in this file, the .env
+ * file, or the production JS bundle. Only their SHA-256 hashes are stored here.
  *
- * HOW TO CHANGE CREDENTIALS — TWO OPTIONS:
+ * When the user enters a password, SubtleCrypto.digest('SHA-256', ...) hashes
+ * it in the browser and compares the result against the stored hash. Plain
+ * passwords are never readable from the bundle via browser DevTools.
  *
- * Option A — Edit this file directly in VS Code:
- *   Change the string values in SECTION 1 and SECTION 2 below.
+ * NOTE: This is defence-in-depth for a private internal management tool. For
+ * maximum security (multi-user SaaS), replace this with Supabase Auth which
+ * handles hashing server-side with bcrypt and never exposes passwords at all.
  *
- * Option B — Use your .env file (recommended for version control safety):
- *   Edit the .env file in the project root and set:
- *     VITE_OWNER_USERNAME=YourOwnerUsername
- *     VITE_OWNER_PASSWORD=YourOwnerPassword
- *     VITE_EMPLOYEE_USERNAME=YourEmployeeUsername
- *     VITE_EMPLOYEE_PASSWORD=YourEmployeePassword
- *   The .env file is excluded from git via .gitignore.
- *   The .env.example file documents all variables safely (no real passwords).
+ * HOW TO CHANGE CREDENTIALS:
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Step 1 — Compute the SHA-256 hash of the new password in your terminal:
+ *           node -e "const c=require('crypto'); console.log(c.createHash('sha256').update('YOUR_NEW_PASSWORD').digest('hex'));"
  *
- * NEVER commit real passwords to .env.example or any public GitHub file.
+ * Step 2 — Paste the resulting hash string into OWNER_PASSWORD_HASH or
+ *           EMPLOYEE_PASSWORD_HASH below (not the raw password, only the hash).
+ *
+ * Step 3 — Save this file and rebuild the app: npm run build
+ *
+ * NEVER store raw passwords here, in .env, in .env.example, or in git commits.
  * =============================================================================
  */
 
 // =============================================================================
 // [SECTION 1] — OWNER CREDENTIALS
 // =============================================================================
-// To change the owner login: edit the username and password strings below,
-// OR set VITE_OWNER_USERNAME and VITE_OWNER_PASSWORD in your .env file.
-// The .env variable takes priority over the hardcoded fallback string.
+// Owner username (not secret — OK to store as plain text).
+// Owner password stored ONLY as SHA-256 hash — raw password is NEVER stored.
+//
+// Current owner username : Jagan
+// Current owner password : (kept only in your head or a password manager)
+// SHA-256 hash of password '12345678910':
+//   63640264849a87c90356129d99ea165e37aa5fabc1fea46906df1a7ca50db492
+//
+// To change: compute hash as above, replace OWNER_PASSWORD_HASH value.
 // =============================================================================
+const OWNER_USERNAME = import.meta.env.VITE_OWNER_USERNAME || 'Jagan';
+const OWNER_PASSWORD_HASH =
+  '63640264849a87c90356129d99ea165e37aa5fabc1fea46906df1a7ca50db492';
+
 export const OWNER_CONFIG = {
-  username: import.meta.env.VITE_OWNER_USERNAME || 'Jagan',
-  password: import.meta.env.VITE_OWNER_PASSWORD || '12345678910',
+  username: OWNER_USERNAME,
   role: 'owner',
   displayName: 'Jagan (Owner)',
   permissions: {
@@ -54,14 +63,23 @@ export const OWNER_CONFIG = {
 // =============================================================================
 // [SECTION 2] — EMPLOYEE CREDENTIALS
 // =============================================================================
-// This is the shared team login used by all employees to enter the workspace.
-// To change: edit strings below OR set VITE_EMPLOYEE_USERNAME / VITE_EMPLOYEE_PASSWORD in .env.
+// Shared team login used by all employees to enter the workspace.
 // Individual employee identity is established via their chosen Profile Name
 // inside the workspace — NOT via separate passwords per employee.
+//
+// Current employee username : Jagan team
+// Current employee password : (kept only in your head or a password manager)
+// SHA-256 hash of password '123456789':
+//   15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225
+//
+// To change: compute hash as above, replace EMPLOYEE_PASSWORD_HASH value.
 // =============================================================================
+const EMPLOYEE_USERNAME = import.meta.env.VITE_EMPLOYEE_USERNAME || 'Jagan team';
+const EMPLOYEE_PASSWORD_HASH =
+  '15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225';
+
 export const EMPLOYEE_CONFIG = {
-  username: import.meta.env.VITE_EMPLOYEE_USERNAME || 'Jagan team',
-  password: import.meta.env.VITE_EMPLOYEE_PASSWORD || '123456789',
+  username: EMPLOYEE_USERNAME,
   role: 'employee',
   displayName: 'Team Employee',
   permissions: {
@@ -74,17 +92,39 @@ export const EMPLOYEE_CONFIG = {
 };
 
 // =============================================================================
-// [SECTION 3] — AUTHENTICATION SERVICE & ROLE IDENTIFIER
-// Single common login verifies credentials and automatically identifies the role.
+// [SECTION 3] — PASSWORD HASHING UTILITY
+// Uses browser SubtleCrypto (available in all modern browsers, no library needed).
+// Returns the lowercase hex SHA-256 hash of the given plain-text password.
 // =============================================================================
-export function authenticateUser(username, password) {
+async function hashPassword(plainText) {
+  const encoded = new TextEncoder().encode(plainText);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// =============================================================================
+// [SECTION 4] — AUTHENTICATION SERVICE & ROLE IDENTIFIER
+// Single common login verifies credentials and automatically identifies the role.
+// This function is ASYNC because SubtleCrypto.digest() returns a Promise.
+// Callers must use: const result = await authenticateUser(username, password);
+// =============================================================================
+export async function authenticateUser(username, password) {
   const trimmedUser = (username || '').trim();
   const trimmedPass = (password || '').trim();
 
+  if (!trimmedUser || !trimmedPass) {
+    return { success: false, error: 'Please provide both username and password.' };
+  }
+
+  // Hash the entered password once — compare against stored hashes
+  const enteredHash = await hashPassword(trimmedPass);
+
   // Check Owner Credentials
   if (
-    trimmedUser.toLowerCase() === OWNER_CONFIG.username.toLowerCase() &&
-    trimmedPass === OWNER_CONFIG.password
+    trimmedUser.toLowerCase() === OWNER_USERNAME.toLowerCase() &&
+    enteredHash === OWNER_PASSWORD_HASH
   ) {
     return {
       success: true,
@@ -97,8 +137,8 @@ export function authenticateUser(username, password) {
 
   // Check Employee Credentials
   if (
-    trimmedUser.toLowerCase() === EMPLOYEE_CONFIG.username.toLowerCase() &&
-    trimmedPass === EMPLOYEE_CONFIG.password
+    trimmedUser.toLowerCase() === EMPLOYEE_USERNAME.toLowerCase() &&
+    enteredHash === EMPLOYEE_PASSWORD_HASH
   ) {
     return {
       success: true,

@@ -8,7 +8,7 @@ export default function LoginPage({ onBackToHome }) {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -18,7 +18,7 @@ export default function LoginPage({ onBackToHome }) {
     }
 
     setIsSubmitting(true);
-    const result = login(username, password);
+    const result = await login(username, password);
     setIsSubmitting(false);
 
     if (!result.success) {

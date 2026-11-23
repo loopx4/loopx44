@@ -25,8 +25,10 @@ export function AuthProvider({ children }) {
     }
   });
 
-  const login = (username, password) => {
-    const result = authenticateUser(username, password);
+  // login() is async because authenticateUser() uses SubtleCrypto (async hash).
+  // Always call with: const result = await login(username, password);
+  const login = async (username, password) => {
+    const result = await authenticateUser(username, password);
     if (result.success) {
       const newSession = {
         role: result.role,

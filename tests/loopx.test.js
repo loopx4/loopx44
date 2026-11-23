@@ -1,40 +1,61 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+/**
+ * =============================================================================
+ * LOOPX TEST SUITE
+ * tests/loopx.test.js
+ * =============================================================================
+ *
+ * NOTE ON ASYNC AUTH TESTS:
+ * authenticateUser() is now async (uses SubtleCrypto in the browser).
+ * Vitest runs in Node environment where crypto.subtle is available from
+ * Node 19+ via the globalThis.crypto Web Crypto API polyfill.
+ *
+ * All auth tests use `await` and are wrapped in async functions.
+ * =============================================================================
+ */
+
+import { describe, it, expect } from 'vitest';
 import { authenticateUser } from '../src/config/auth.config';
 import { formatQueueNumber } from '../src/services/dataService';
 
+// ---------------------------------------------------------------------------
+// AUTH & ROLE ROUTING
+// ---------------------------------------------------------------------------
 describe('LoopX Authentication & Role Routing', () => {
-  it('correctly authenticates owner credentials and returns owner role', () => {
-    const res = authenticateUser('Jagan', '12345678910');
+  it('correctly authenticates owner credentials and returns owner role', async () => {
+    const res = await authenticateUser('Jagan', '12345678910');
     expect(res.success).toBe(true);
     expect(res.role).toBe('owner');
     expect(res.permissions.canViewAllSubmissions).toBe(true);
   });
 
-  it('correctly authenticates employee credentials and returns employee role', () => {
-    const res = authenticateUser('Jagan team', '123456789');
+  it('correctly authenticates employee credentials and returns employee role', async () => {
+    const res = await authenticateUser('Jagan team', '123456789');
     expect(res.success).toBe(true);
     expect(res.role).toBe('employee');
     expect(res.permissions.canViewAllSubmissions).toBe(false);
   });
 
-  it('handles case-insensitive usernames gracefully', () => {
-    const res = authenticateUser('jagan', '12345678910');
+  it('handles case-insensitive usernames gracefully', async () => {
+    const res = await authenticateUser('jagan', '12345678910');
     expect(res.success).toBe(true);
     expect(res.role).toBe('owner');
   });
 
-  it('rejects invalid password for owner', () => {
-    const res = authenticateUser('Jagan', 'wrongpass');
+  it('rejects invalid password for owner', async () => {
+    const res = await authenticateUser('Jagan', 'wrongpass');
     expect(res.success).toBe(false);
     expect(res.error).toBeDefined();
   });
 
-  it('rejects invalid username', () => {
-    const res = authenticateUser('Stranger', '123456789');
+  it('rejects invalid username', async () => {
+    const res = await authenticateUser('Stranger', '123456789');
     expect(res.success).toBe(false);
   });
 });
 
+// ---------------------------------------------------------------------------
+// QUEUE NUMBER GENERATION
+// ---------------------------------------------------------------------------
 describe('LoopX Queue Number Generation', () => {
   it('formats sequential numbers into LX-001, LX-002, LX-010, LX-100', () => {
     expect(formatQueueNumber(1)).toBe('LX-001');
@@ -45,6 +66,9 @@ describe('LoopX Queue Number Generation', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// PROFILE DEDUPLICATION LOGIC
+// ---------------------------------------------------------------------------
 describe('LoopX Profile Deduplication Logic', () => {
   it('detects case-insensitive duplicates correctly', () => {
     const existing = [
@@ -64,6 +88,9 @@ describe('LoopX Profile Deduplication Logic', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// TEAM CHAT MENTION DETECTION
+// ---------------------------------------------------------------------------
 describe('LoopX Team Chat Mention Detection', () => {
   it('identifies @mentions matching registered profiles', () => {
     const profiles = [
@@ -86,18 +113,20 @@ describe('LoopX Team Chat Mention Detection', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// PERMISSION BOUNDARIES
+// ---------------------------------------------------------------------------
 describe('LoopX Permission Boundaries', () => {
-  it('ensures employee role cannot view all submissions', () => {
-    const employee = authenticateUser('Jagan team', '123456789');
+  it('ensures employee role cannot view all submissions', async () => {
+    const employee = await authenticateUser('Jagan team', '123456789');
     expect(employee.permissions.canViewAllSubmissions).toBe(false);
     expect(employee.permissions.canCreateClientLinks).toBe(true);
   });
 
-  it('ensures owner role has comprehensive executive permissions', () => {
-    const owner = authenticateUser('Jagan', '12345678910');
+  it('ensures owner role has comprehensive executive permissions', async () => {
+    const owner = await authenticateUser('Jagan', '12345678910');
     expect(owner.permissions.canViewAllSubmissions).toBe(true);
     expect(owner.permissions.canUpdateAllStatuses).toBe(true);
     expect(owner.permissions.canViewAnalytics).toBe(true);
   });
 });
-

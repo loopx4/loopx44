@@ -1,3 +1,6 @@
+# Dev-only screenshot fixtures (not part of the app)
+test-harness/
+
 # Node & Build
 node_modules
 dist
