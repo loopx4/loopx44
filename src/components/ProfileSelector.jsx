@@ -140,9 +140,6 @@ export default function ProfileSelector() {
               }}
               disabled={isSubmitting}
             />
-            <div className="form-hint">
-              Profile names must be unique. Uppercase and lowercase duplicates are automatically prevented.
-            </div>
           </div>
 
           <button

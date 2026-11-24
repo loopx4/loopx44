@@ -335,7 +335,7 @@ export default function ClientSubmissionPage({ token }) {
         <img src="/assets/loopx-logo.png" alt="LoopX" style={{ height: '36px', marginBottom: '16px' }} />
         <h1 style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Client Onboarding & Project Intake</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
-          Please complete your business details and project requirements below. Upon submission, an atomic queue number will be assigned.
+          Please complete your business details and project requirements below. Upon submission, your queue number will be assigned.
         </p>
       </div>
 

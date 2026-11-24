@@ -395,3 +395,20 @@ label {
     padding: 0 16px;
   }
 }
+
+@media (max-width: 600px) {
+  .navbar {
+    height: auto;
+    min-height: var(--header-height);
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .nav-right {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .card {
+    padding: 20px 16px;
+  }
+}

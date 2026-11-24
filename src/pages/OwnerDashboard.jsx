@@ -247,7 +247,7 @@ export default function OwnerDashboard() {
           <div className="card" style={{ marginBottom: '28px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ fontSize: '0.95rem', textTransform: 'uppercase', color: 'var(--text-white)' }}>
-                Database Status Distribution Chart
+                Status Distribution
               </h3>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                 {totalCount} Total Records
@@ -256,7 +256,7 @@ export default function OwnerDashboard() {
 
             {totalCount === 0 ? (
               <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                Zero submissions recorded. This breakdown chart updates live based on genuine database counts.
+                Zero submissions recorded.
               </div>
             ) : (
               <div>
@@ -327,9 +327,6 @@ export default function OwnerDashboard() {
                 <h2 style={{ fontSize: '1.2rem', color: 'var(--text-white)' }}>
                   {statusFilter === 'Total' ? 'All Submissions' : `${statusFilter} Submissions`} ({filteredSubmissions.length})
                 </h2>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  Displaying real-time records. Click any row to inspect complete details and update workflow status.
-                </div>
               </div>
 
               {statusFilter !== 'Total' && (
@@ -424,7 +421,7 @@ export default function OwnerDashboard() {
             <div className="empty-state">
               <div className="empty-state-title">Zero Employee Profiles</div>
               <div className="empty-state-desc">
-                No employee profiles have registered in the system yet. Once employees log in and create their profiles, their individual performance and attribution metrics will appear here.
+                No employee profiles have been registered yet.
               </div>
             </div>
           ) : (

@@ -120,7 +120,7 @@ export default function SubmissionDetailModal({ submission, currentUserDisplayNa
           }}
         >
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>
-            Update Workflow Status (Attributed to: {currentUserDisplayName})
+            Update Status
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {['Pending', 'Working', 'Completed'].map((st) => (

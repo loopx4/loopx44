@@ -301,10 +301,6 @@ export default function EmployeeWorkspace() {
                     Open Link ↗
                   </a>
                 </div>
-
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '12px' }}>
-                  Note: The queue number is not assigned yet. When the client submits the form, an atomic sequential queue number (e.g. LX-001) will be generated automatically.
-                </div>
               </div>
             )}
 
