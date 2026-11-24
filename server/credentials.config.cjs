@@ -25,6 +25,13 @@ const dotenv = require('dotenv');
 // Load .env from project root if not already in environment
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+// In test / CI environments, ensure mock values exist for test suite execution
+if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-loopx-unit-test-32bytes';
+  process.env.OWNER_BCRYPT_HASH = process.env.OWNER_BCRYPT_HASH || '$2a$10$sFUynV/deT79tr3GfqNC9.rsWB51./MSUUGhq98Y7.F5HAwFGkhj2';
+  process.env.EMPLOYEE_BCRYPT_HASH = process.env.EMPLOYEE_BCRYPT_HASH || '$2a$10$QbLPPXz3fXgyaZNRRqvij.NUwC7j14zs1lliFtVluzXuzSqnT9wYq';
+}
+
 // =============================================================================
 // [SECTION 1] — OWNER CREDENTIALS (LOADED FROM ENVIRONMENT)
 // =============================================================================

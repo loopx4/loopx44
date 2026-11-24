@@ -27,13 +27,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Dependencies
         run: npm ci
 
       - name: Run Test Suite
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-loopx-unit-test-32bytes
+          OWNER_USERNAME: Jagan
+          OWNER_BCRYPT_HASH: '$2a$10$sFUynV/deT79tr3GfqNC9.rsWB51./MSUUGhq98Y7.F5HAwFGkhj2'
+          EMPLOYEE_USERNAME: 'Jagan team'
+          EMPLOYEE_BCRYPT_HASH: '$2a$10$QbLPPXz3fXgyaZNRRqvij.NUwC7j14zs1lliFtVluzXuzSqnT9wYq'
         run: npm test
 
       - name: Build Application
