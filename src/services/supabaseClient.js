@@ -64,3 +64,27 @@ export const SUPABASE_STATUS = {
   url: supabaseUrl ? supabaseUrl.replace(/https?:\/\//, '').split('.')[0] + '...' : 'Not Configured',
   storageBucket: import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'loopx-documents'
 };
+
+/**
+ * Attaches backend session JWT to the Supabase client so PostgREST and Realtime
+ * evaluate RLS policies using auth.jwt() claims.
+ */
+export function setSupabaseAuthToken(token) {
+  if (supabase && token) {
+    if (supabase.realtime && typeof supabase.realtime.setAuth === 'function') {
+      supabase.realtime.setAuth(token);
+    }
+    if (supabase.rest) {
+      supabase.rest.headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+}
+
+/**
+ * Removes custom Authorization header from Supabase client upon logout.
+ */
+export function clearSupabaseAuthToken() {
+  if (supabase && supabase.rest) {
+    delete supabase.rest.headers['Authorization'];
+  }
+}

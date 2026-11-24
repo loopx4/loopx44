@@ -167,8 +167,36 @@ VALUES ('loopx-documents', 'loopx-documents', false, 15728640)
 ON CONFLICT (id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
--- 10. ROW LEVEL SECURITY (RLS) POLICIES
+-- 10. ROW LEVEL SECURITY (RLS) POLICIES & JWT CLAIMS HELPERS
 -- -----------------------------------------------------------------------------
+-- Helper function to extract user role from either custom backend JWT or Supabase Auth
+CREATE OR REPLACE FUNCTION public.get_auth_role()
+RETURNS TEXT AS $$
+BEGIN
+  RETURN COALESCE(
+    auth.jwt() -> 'user_metadata' ->> 'role',
+    auth.jwt() -> 'app_metadata' ->> 'role',
+    auth.jwt() ->> 'role',
+    current_setting('request.jwt.claims', true)::json ->> 'role',
+    ''
+  );
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Helper function to extract username from either custom backend JWT or Supabase Auth
+CREATE OR REPLACE FUNCTION public.get_auth_username()
+RETURNS TEXT AS $$
+BEGIN
+  RETURN COALESCE(
+    auth.jwt() -> 'user_metadata' ->> 'username',
+    auth.jwt() -> 'app_metadata' ->> 'username',
+    auth.jwt() ->> 'username',
+    current_setting('request.jwt.claims', true)::json ->> 'username',
+    ''
+  );
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 -- Enable RLS on all tables
 ALTER TABLE public.employee_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_links ENABLE ROW LEVEL SECURITY;
@@ -199,11 +227,10 @@ CREATE POLICY "Public: Insert submission with valid token"
 CREATE POLICY "Public: Read submitted record by token"
   ON public.client_submissions FOR SELECT
   USING (
-    -- Public client lookup requires knowing the exact secret token
     link_token IS NOT NULL
     AND (
-      COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
-      OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+      public.get_auth_role() = 'owner'
+      OR created_by_name = public.get_auth_username()
       OR auth.role() = 'service_role'
       OR auth.role() = 'anon'
     )
@@ -219,22 +246,22 @@ CREATE POLICY "Public: Upload files to loopx-documents"
 CREATE POLICY "Owner: Full access to client_submissions"
   ON public.client_submissions FOR ALL
   USING (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    public.get_auth_role() = 'owner'
     OR auth.role() = 'service_role'
   )
   WITH CHECK (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    public.get_auth_role() = 'owner'
     OR auth.role() = 'service_role'
   );
 
 CREATE POLICY "Owner: Full access to employee_profiles"
   ON public.employee_profiles FOR ALL
   USING (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    public.get_auth_role() = 'owner'
     OR auth.role() = 'service_role'
   )
   WITH CHECK (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    public.get_auth_role() = 'owner'
     OR auth.role() = 'service_role'
   );
 
@@ -255,21 +282,21 @@ CREATE POLICY "Employee: Create client links"
 CREATE POLICY "Employee: Read client links created by self"
   ON public.client_links FOR SELECT
   USING (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
-    OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+    public.get_auth_role() = 'owner'
+    OR created_by_name = public.get_auth_username()
     OR auth.role() = 'service_role'
   );
 
 CREATE POLICY "Employee: Update submissions created by self or assigned"
   ON public.client_submissions FOR UPDATE
   USING (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
-    OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+    public.get_auth_role() = 'owner'
+    OR created_by_name = public.get_auth_username()
     OR auth.role() = 'service_role'
   )
   WITH CHECK (
-    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
-    OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+    public.get_auth_role() = 'owner'
+    OR created_by_name = public.get_auth_username()
     OR auth.role() = 'service_role'
   );
 

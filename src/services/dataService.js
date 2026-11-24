@@ -326,6 +326,47 @@ export const DataService = {
     return { success: true, submission: submissionRecord, queueNumber };
   },
 
+  // ---------------------------------------------------------------------------
+  // 3b. PRIVATE FILE STORAGE & UPLOADS
+  // ---------------------------------------------------------------------------
+  async uploadFile(token, file) {
+    if (isSupabaseConfigured && supabase) {
+      const bucket = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'loopx-documents';
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${token}/${Date.now()}_${cleanFileName}`;
+
+      const { data, error } = await supabase.storage.from(bucket).upload(storagePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+      if (error) throw error;
+      return {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        storagePath: data.path
+      };
+    }
+
+    return {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      storagePath: `local/${file.name}`
+    };
+  },
+
+  async getFileDownloadUrl(storagePath) {
+    if (isSupabaseConfigured && supabase && storagePath && !storagePath.startsWith('local/')) {
+      const bucket = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'loopx-documents';
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 3600);
+      if (error) return null;
+      return data.signedUrl;
+    }
+    return null;
+  },
+
   async getSubmissionByToken(token) {
     if (!token) return null;
 
