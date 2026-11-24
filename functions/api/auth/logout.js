@@ -8,7 +8,18 @@
  * =============================================================================
  */
 
-export async function onRequestPost() {
+export async function onRequestPost(context) {
+  const { request } = context;
+
+  // CSRF Mitigation: Reject cross-site requests
+  const secFetchSite = request?.headers?.get('sec-fetch-site');
+  if (secFetchSite === 'cross-site') {
+    return new Response(JSON.stringify({ error: 'Cross-site request blocked.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
   const cookieHeader = [
     'loopx_session=',
     'HttpOnly',

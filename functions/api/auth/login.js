@@ -61,6 +61,15 @@ async function signJWT(payload, secret, expiresInSeconds) {
 export async function onRequestPost(context) {
   const { request, env } = context;
 
+  // --- CSRF Mitigation: Reject cross-site requests ---
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite === 'cross-site') {
+    return new Response(JSON.stringify({ error: 'Cross-site request blocked.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
   // --- Read required env vars set in Cloudflare Pages Dashboard ---
   const OWNER_USERNAME   = env.OWNER_USERNAME   || '';
   const OWNER_HASH       = env.OWNER_BCRYPT_HASH || '';

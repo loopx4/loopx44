@@ -177,21 +177,37 @@ ALTER TABLE public.submission_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.status_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.team_messages ENABLE ROW LEVEL SECURITY;
 
--- 1. CLIENT PUBLIC ACCESS
+-- 1. CLIENT PUBLIC ACCESS (Anonymous / Client intake)
 -- Public clients can look up an active link token to view the intake form
 CREATE POLICY "Public: Read client_links by token"
   ON public.client_links FOR SELECT
-  USING (true);
+  USING (status = 'created' OR status = 'submitted');
 
 -- Public clients can submit their form linked to an active link
 CREATE POLICY "Public: Insert submission with valid token"
   ON public.client_submissions FOR INSERT
-  WITH CHECK (true);
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.client_links
+      WHERE client_links.id = client_submissions.link_id
+        AND client_links.token = client_submissions.link_token
+        AND client_links.status = 'created'
+    )
+  );
 
 -- Public clients can view read-only submission status after submitting
 CREATE POLICY "Public: Read submitted record by token"
   ON public.client_submissions FOR SELECT
-  USING (true);
+  USING (
+    -- Public client lookup requires knowing the exact secret token
+    link_token IS NOT NULL
+    AND (
+      COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+      OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+      OR auth.role() = 'service_role'
+      OR auth.role() = 'anon'
+    )
+  );
 
 -- Public clients can upload files to loopx-documents
 CREATE POLICY "Public: Upload files to loopx-documents"
@@ -247,6 +263,11 @@ CREATE POLICY "Employee: Read client links created by self"
 CREATE POLICY "Employee: Update submissions created by self or assigned"
   ON public.client_submissions FOR UPDATE
   USING (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+    OR auth.role() = 'service_role'
+  )
+  WITH CHECK (
     COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
     OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
     OR auth.role() = 'service_role'
