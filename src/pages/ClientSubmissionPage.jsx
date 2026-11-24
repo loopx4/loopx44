@@ -1,27 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { DataService } from '../services/dataService';
+import { DataService, DEFAULT_LOOPX_QUESTIONS } from '../services/dataService';
 
 export default function ClientSubmissionPage({ token }) {
   const [loading, setLoading] = useState(true);
   const [linkRecord, setLinkRecord] = useState(null);
+  const [questions, setQuestions] = useState([]);
   const [existingSubmission, setExistingSubmission] = useState(null);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(null);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    client_name: '',
-    business_name: '',
-    phone: '',
-    email: '',
-    location: '',
-    business_type: '',
-    services_required: '',
-    detailed_requirements: '',
-    additional_info: ''
-  });
-
+  // Dynamic answers state: map of question ID/label to value
+  const [answers, setAnswers] = useState({});
   const [files, setFiles] = useState([]);
   const [uploadError, setUploadError] = useState('');
 
@@ -44,6 +34,14 @@ export default function ClientSubmissionPage({ token }) {
 
         setLinkRecord(link);
 
+        // Extract questions from link's snapshot or shared form config
+        if (link.form_snapshot && Array.isArray(link.form_snapshot) && link.form_snapshot.length > 0) {
+          setQuestions(link.form_snapshot);
+        } else {
+          const config = await DataService.getFormConfig();
+          setQuestions(config?.questions || DEFAULT_LOOPX_QUESTIONS);
+        }
+
         // Check if link was already submitted (Read-only mode check)
         if (link.status === 'submitted') {
           const sub = await DataService.getSubmissionByToken(token);
@@ -60,23 +58,46 @@ export default function ClientSubmissionPage({ token }) {
     loadLink();
   }, [token]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  const handleAnswerChange = (qKey, value) => {
+    setAnswers((prev) => ({ ...prev, [qKey]: value }));
+  };
+
+  const handleCheckboxChange = (qKey, option, isChecked) => {
+    setAnswers((prev) => {
+      const current = Array.isArray(prev[qKey]) ? [...prev[qKey]] : [];
+      if (isChecked) {
+        if (!current.includes(option)) current.push(option);
+      } else {
+        const idx = current.indexOf(option);
+        if (idx !== -1) current.splice(idx, 1);
+      }
+      return { ...prev, [qKey]: current };
+    });
   };
 
   const handleFileChange = (e) => {
     setUploadError('');
     const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length === 0) return;
 
-    // Check size limit: max 15MB total
-    const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
-    if (totalSize > 15 * 1024 * 1024) {
-      setUploadError('Total file size must not exceed 15MB.');
+    // Check individual file limit (5 MB)
+    for (const f of selectedFiles) {
+      if (f.size > 5 * 1024 * 1024) {
+        setUploadError(`File "${f.name}" (${(f.size / (1024 * 1024)).toFixed(2)} MB) exceeds the 5 MB individual limit.`);
+        return;
+      }
+    }
+
+    // Check combined total size (30 MB)
+    const existingSize = files.reduce((acc, f) => acc + (f.size || 0), 0);
+    const newSelectedSize = selectedFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+    const combinedTotal = existingSize + newSelectedSize;
+
+    if (combinedTotal > 30 * 1024 * 1024) {
+      setUploadError(`Combined file size (${(combinedTotal / (1024 * 1024)).toFixed(2)} MB) exceeds the 30 MB maximum limit.`);
       return;
     }
 
-    // Process files
     const filePromises = selectedFiles.map((file) => {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -105,18 +126,33 @@ export default function ClientSubmissionPage({ token }) {
     e.preventDefault();
     setError('');
 
-    // Validation
-    if (!formData.client_name.trim()) return setError('Client Name is required.');
-    if (!formData.business_name.trim()) return setError('Business/Organisation Name is required.');
-    if (!formData.phone.trim()) return setError('Phone Number is required.');
-    if (!formData.location.trim()) return setError('Business Location is required.');
-    if (!formData.business_type.trim()) return setError('Business Type is required.');
-    if (!formData.services_required.trim()) return setError('Services Required is required.');
-    if (!formData.detailed_requirements.trim()) return setError('Detailed Requirements is required.');
+    // Dynamic validation of required questions
+    for (const q of questions) {
+      if (q.question_type === 'file_upload') continue;
+      if (q.is_required) {
+        const ans = answers[q.label] ?? answers[q.id];
+        if (ans === undefined || ans === null || (typeof ans === 'string' && !ans.trim()) || (Array.isArray(ans) && ans.length === 0)) {
+          setError(`"${q.label}" is required. Please provide an answer.`);
+          return;
+        }
+      }
+    }
 
     setIsSubmitting(true);
     try {
-      const res = await DataService.submitClientForm(token, formData, files);
+      // Build responses map
+      const responsesMap = {};
+      questions.forEach((q) => {
+        if (q.question_type !== 'file_upload') {
+          responsesMap[q.label] = answers[q.label] ?? answers[q.id] ?? '';
+        }
+      });
+
+      const payload = {
+        responses: responsesMap
+      };
+
+      const res = await DataService.submitClientForm(token, payload, files);
       if (!res.success) {
         setError(res.error);
         setIsSubmitting(false);
@@ -137,7 +173,7 @@ export default function ClientSubmissionPage({ token }) {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Loading client portal...</p>
+        <p style={{ color: 'var(--text-muted)' }}>Loading client intake portal...</p>
       </div>
     );
   }
@@ -163,8 +199,10 @@ export default function ClientSubmissionPage({ token }) {
   // 3. Submitted / Read-Only View (or freshly submitted view)
   if (existingSubmission) {
     const sub = existingSubmission;
+    const subResponses = sub.responses || {};
+
     return (
-      <div className="app-container" style={{ maxWidth: '780px', marginTop: '30px' }}>
+      <div className="app-container" style={{ maxWidth: '820px', marginTop: '30px' }}>
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <img src="/assets/loopx-logo.png" alt="LoopX" style={{ height: '36px', marginBottom: '16px' }} />
           <div
@@ -180,7 +218,7 @@ export default function ClientSubmissionPage({ token }) {
               fontWeight: 600
             }}
           >
-            {submitSuccess ? '✓ SUBMISSION RECEIVED SUCCESSFULLY' : '✓ SUBMISSION RECORD LOCKED (READ-ONLY)'}
+            {submitSuccess ? '✓ SUBMISSION RECEIVED & CONFIRMED' : '✓ SUBMISSION RECORD LOCKED (READ-ONLY)'}
           </div>
         </div>
 
@@ -202,7 +240,7 @@ export default function ClientSubmissionPage({ token }) {
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                 Assigned Queue Number
               </div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-green)', fontFamily: 'var(--font-mono)' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--color-green)', fontFamily: 'var(--font-mono)' }}>
                 {sub.queue_number}
               </div>
             </div>
@@ -218,321 +256,246 @@ export default function ClientSubmissionPage({ token }) {
           </div>
 
           <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '24px' }}>
-            Submitted on {new Date(sub.submitted_at).toLocaleString()} • Managed by LoopX Partner ({sub.created_by_name || 'LoopX Team'})
+            Submitted on <strong style={{ color: 'var(--text-white)' }}>{new Date(sub.submitted_at).toLocaleString()}</strong> by{' '}
+            <strong style={{ color: 'var(--text-white)' }}>{sub.client_name || 'Client'}</strong>. Handled by representative{' '}
+            <strong style={{ color: 'var(--color-green)' }}>{sub.created_by_name}</strong>.
           </p>
 
-          {/* Submitted Information Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-            <div>
-              <label style={{ color: 'var(--text-muted)' }}>Client Name</label>
-              <div style={{ fontSize: '15px', fontWeight: 600 }}>{sub.client_name}</div>
-            </div>
-            <div>
-              <label style={{ color: 'var(--text-muted)' }}>Business / Organisation</label>
-              <div style={{ fontSize: '15px', fontWeight: 600 }}>{sub.business_name}</div>
-            </div>
-            <div>
-              <label style={{ color: 'var(--text-muted)' }}>Phone Number</label>
-              <div style={{ fontSize: '15px', fontFamily: 'var(--font-mono)' }}>{sub.phone}</div>
-            </div>
-            <div>
-              <label style={{ color: 'var(--text-muted)' }}>Email Address</label>
-              <div style={{ fontSize: '15px' }}>{sub.email || '—'}</div>
-            </div>
-            <div>
-              <label style={{ color: 'var(--text-muted)' }}>Business Location</label>
-              <div style={{ fontSize: '15px' }}>{sub.location}</div>
-            </div>
-            <div>
-              <label style={{ color: 'var(--text-muted)' }}>Business Type</label>
-              <div style={{ fontSize: '15px' }}>{sub.business_type}</div>
-            </div>
+          {/* Submitted Responses Display */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+            {questions.map((q, idx) => {
+              if (q.question_type === 'file_upload') return null;
+              const ansVal = subResponses[q.label] ?? subResponses[q.id] ?? sub[q.label] ?? '—';
+              const displayVal = Array.isArray(ansVal) ? ansVal.join(', ') : String(ansVal || '—');
+
+              return (
+                <div key={q.id || idx} style={{ backgroundColor: '#0d0d0d', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '16px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--color-green)', fontFamily: 'var(--font-mono)', marginBottom: '4px' }}>
+                    {idx + 1}. {q.label}
+                  </div>
+                  <div style={{ color: 'var(--text-white)', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
+                    {displayVal}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ color: 'var(--text-muted)' }}>Services Required</label>
-            <div style={{ fontSize: '14px', backgroundColor: '#0d0d0d', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
-              {sub.services_required}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ color: 'var(--text-muted)' }}>Detailed Requirements</label>
-            <div style={{ fontSize: '14px', backgroundColor: '#0d0d0d', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)', whiteSpace: 'pre-wrap' }}>
-              {sub.detailed_requirements}
-            </div>
-          </div>
-
-          {sub.additional_info && (
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ color: 'var(--text-muted)' }}>Additional Information</label>
-              <div style={{ fontSize: '14px', backgroundColor: '#0d0d0d', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-subtle)', whiteSpace: 'pre-wrap' }}>
-                {sub.additional_info}
-              </div>
-            </div>
-          )}
-
-          {/* Uploaded Files Section */}
-          <div>
-            <label style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
-              Uploaded Photos & Documents ({sub.files ? sub.files.length : 0})
-            </label>
-            {!sub.files || sub.files.length === 0 ? (
-              <div style={{ color: 'var(--text-subtle)', fontSize: '13px' }}>No files attached to this submission.</div>
-            ) : (
+          {/* Attached Files Display */}
+          {sub.files && sub.files.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '20px', marginTop: '20px' }}>
+              <h4 style={{ fontSize: '13px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                Attached Files ({sub.files.length})
+              </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {sub.files.map((file, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      backgroundColor: '#0d0d0d',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: '4px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-green)' }}>
-                        [{idx + 1}]
-                      </span>
-                      <span style={{ fontSize: '13px', fontWeight: 500 }}>{file.name}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        ({Math.round(file.size / 1024)} KB)
-                      </span>
-                    </div>
-
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0d0d0d', border: '1px solid var(--border-subtle)', borderRadius: '4px' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-white)' }}>
+                      📄 {file.name} ({Math.round(file.size / 1024)} KB)
+                    </span>
                     {file.dataUrl && (
-                      <a
-                        href={file.dataUrl}
-                        download={file.name}
-                        className="btn-secondary"
-                        style={{ padding: '4px 10px', fontSize: '11px' }}
-                      >
+                      <a href={file.dataUrl} download={file.name} className="btn-outline-green" style={{ padding: '2px 8px', fontSize: '11px' }}>
                         Download
                       </a>
                     )}
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
 
-        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: '13px' }}>
-          Notice: This submission link is now locked in read-only mode. You can bookmark and reopen this exact page anytime to view the live status of your queue number.
+          <div style={{ marginTop: '28px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
+            This record is locked. Keep your queue number <strong style={{ color: 'var(--color-green)', fontFamily: 'var(--font-mono)' }}>{sub.queue_number}</strong> for tracking your project status.
+          </div>
         </div>
       </div>
     );
   }
 
-  // 4. Initial Submission Form (Link is active, not submitted yet)
+  // 4. Active Client Intake Form
   return (
-    <div className="app-container" style={{ maxWidth: '780px', marginTop: '24px' }}>
-      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-        <img src="/assets/loopx-logo.png" alt="LoopX" style={{ height: '36px', marginBottom: '16px' }} />
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Client Onboarding & Project Intake</h1>
+    <div className="app-container" style={{ maxWidth: '820px', marginTop: '20px', marginBottom: '60px' }}>
+      <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+        <img src="/assets/loopx-logo.png" alt="LoopX" style={{ height: '36px', marginBottom: '12px' }} />
+        <h1 style={{ fontSize: '1.6rem', color: 'var(--text-white)', marginBottom: '6px' }}>
+          Client Requirements Intake
+        </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
-          Please complete your business details and project requirements below. Upon submission, your queue number will be assigned.
+          Invited by LoopX Representative: <strong style={{ color: 'var(--color-green)' }}>{linkRecord?.created_by_name}</strong>
         </p>
       </div>
 
       <div className="card" style={{ padding: '32px' }}>
         {error && (
-          <div
-            style={{
-              backgroundColor: '#1a0505',
-              border: '1px solid #661111',
-              color: 'var(--color-error)',
-              padding: '12px 16px',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '14px',
-              marginBottom: '20px'
-            }}
-          >
+          <div style={{ backgroundColor: '#1a0505', border: '1px solid #661111', color: 'var(--color-error)', padding: '12px 16px', borderRadius: '4px', fontSize: '13px', marginBottom: '20px' }}>
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* Section 1: Contact & Organisation */}
-          <h3 style={{ fontSize: '1rem', textTransform: 'uppercase', marginBottom: '16px', color: 'var(--color-green)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
-            1. Client & Business Information
-          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+            {questions.map((q, idx) => {
+              const qKey = q.label;
+              const val = answers[qKey] ?? '';
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-            <div className="form-group">
-              <label htmlFor="client_name">Client Name *</label>
-              <input
-                id="client_name"
-                name="client_name"
-                type="text"
-                placeholder="Full Name"
-                value={formData.client_name}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
+              return (
+                <div key={q.id || idx} className="form-group" style={{ marginBottom: 0 }}>
+                  <label htmlFor={`field_${idx}`} style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-white)', marginBottom: '4px' }}>
+                    {idx + 1}. {q.label} {q.is_required && <span style={{ color: 'var(--color-error)' }}>*</span>}
+                  </label>
+                  {q.description && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      {q.description}
+                    </div>
+                  )}
 
-            <div className="form-group">
-              <label htmlFor="business_name">Business / Organisation Name *</label>
-              <input
-                id="business_name"
-                name="business_name"
-                type="text"
-                placeholder="e.g. Apex Dynamics Ltd"
-                value={formData.business_name}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
+                  {/* 1. Short Answer */}
+                  {q.question_type === 'short_answer' && (
+                    <input
+                      id={`field_${idx}`}
+                      type="text"
+                      value={val}
+                      onChange={(e) => handleAnswerChange(qKey, e.target.value)}
+                      placeholder="Your answer"
+                      required={q.is_required}
+                    />
+                  )}
 
-            <div className="form-group">
-              <label htmlFor="phone">Phone Number *</label>
-              <input
-                id="phone"
-                name="phone"
-                type="tel"
-                placeholder="+91 98765 43210"
-                value={formData.phone}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
+                  {/* 2. Long Answer */}
+                  {q.question_type === 'long_answer' && (
+                    <textarea
+                      id={`field_${idx}`}
+                      rows={4}
+                      value={val}
+                      onChange={(e) => handleAnswerChange(qKey, e.target.value)}
+                      placeholder="Detailed explanation..."
+                      required={q.is_required}
+                    />
+                  )}
 
-            <div className="form-group">
-              <label htmlFor="email">Email Address (Optional)</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="contact@business.com"
-                value={formData.email}
-                onChange={handleInputChange}
-              />
-            </div>
+                  {/* 3. Phone */}
+                  {q.question_type === 'phone' && (
+                    <input
+                      id={`field_${idx}`}
+                      type="tel"
+                      value={val}
+                      onChange={(e) => handleAnswerChange(qKey, e.target.value)}
+                      placeholder="+1 (555) 000-0000"
+                      required={q.is_required}
+                    />
+                  )}
 
-            <div className="form-group">
-              <label htmlFor="location">Business Location *</label>
-              <input
-                id="location"
-                name="location"
-                type="text"
-                placeholder="City, State / Country"
-                value={formData.location}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
+                  {/* 4. Email */}
+                  {q.question_type === 'email' && (
+                    <input
+                      id={`field_${idx}`}
+                      type="email"
+                      value={val}
+                      onChange={(e) => handleAnswerChange(qKey, e.target.value)}
+                      placeholder="contact@business.com"
+                      required={q.is_required}
+                    />
+                  )}
 
-            <div className="form-group">
-              <label htmlFor="business_type">Business Type *</label>
-              <input
-                id="business_type"
-                name="business_type"
-                type="text"
-                placeholder="e.g. Healthcare, Real Estate, E-Commerce"
-                value={formData.business_type}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
-          </div>
+                  {/* 5. Date */}
+                  {q.question_type === 'date' && (
+                    <input
+                      id={`field_${idx}`}
+                      type="date"
+                      value={val}
+                      onChange={(e) => handleAnswerChange(qKey, e.target.value)}
+                      required={q.is_required}
+                    />
+                  )}
 
-          {/* Section 2: Requirements */}
-          <h3 style={{ fontSize: '1rem', textTransform: 'uppercase', marginTop: '16px', marginBottom: '16px', color: 'var(--color-green)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
-            2. Scope & Technical Requirements
-          </h3>
+                  {/* 6. Dropdown */}
+                  {q.question_type === 'dropdown' && (
+                    <select
+                      id={`field_${idx}`}
+                      value={val}
+                      onChange={(e) => handleAnswerChange(qKey, e.target.value)}
+                      required={q.is_required}
+                    >
+                      <option value="">Select an option...</option>
+                      {(q.options || []).map((opt, oIdx) => (
+                        <option key={oIdx} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  )}
 
-          <div className="form-group">
-            <label htmlFor="services_required">Services Required *</label>
-            <input
-              id="services_required"
-              name="services_required"
-              type="text"
-              placeholder="e.g. Workflow Automation, CRM Integration, Web Application"
-              value={formData.services_required}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
+                  {/* 7. Multiple Choice */}
+                  {q.question_type === 'multiple_choice' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                      {(q.options || []).map((opt, oIdx) => (
+                        <label key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text-white)', cursor: 'pointer', margin: 0 }}>
+                          <input
+                            type="radio"
+                            name={`radio_${idx}`}
+                            value={opt}
+                            checked={val === opt}
+                            onChange={() => handleAnswerChange(qKey, opt)}
+                            required={q.is_required}
+                          />
+                          <span>{opt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
 
-          <div className="form-group">
-            <label htmlFor="detailed_requirements">Detailed Requirements *</label>
-            <textarea
-              id="detailed_requirements"
-              name="detailed_requirements"
-              rows={4}
-              placeholder="Describe your current process, goals, features needed, and expectations..."
-              value={formData.detailed_requirements}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
+                  {/* 8. Checkboxes */}
+                  {q.question_type === 'checkboxes' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                      {(q.options || []).map((opt, oIdx) => {
+                        const isChecked = Array.isArray(val) && val.includes(opt);
+                        return (
+                          <label key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'var(--text-white)', cursor: 'pointer', margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => handleCheckboxChange(qKey, opt, e.target.checked)}
+                            />
+                            <span>{opt}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
 
-          <div className="form-group">
-            <label htmlFor="additional_info">Additional Information (Optional)</label>
-            <textarea
-              id="additional_info"
-              name="additional_info"
-              rows={2}
-              placeholder="Any deadlines, budget range, existing tools in use, or reference links..."
-              value={formData.additional_info}
-              onChange={handleInputChange}
-            />
-          </div>
-
-          {/* Section 3: File Uploads */}
-          <h3 style={{ fontSize: '1rem', textTransform: 'uppercase', marginTop: '16px', marginBottom: '16px', color: 'var(--color-green)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
-            3. Photo & Document Uploads
-          </h3>
-
-          <div className="form-group">
-            <label htmlFor="file_upload">Attach Photos, Schematics, or Documents (Max 15MB total)</label>
-            <input
-              id="file_upload"
-              type="file"
-              multiple
-              onChange={handleFileChange}
-              style={{ padding: '8px', cursor: 'pointer' }}
-            />
-            {uploadError && <div className="form-error">{uploadError}</div>}
-          </div>
-
-          {files.length > 0 && (
-            <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {files.map((file, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    backgroundColor: '#0d0d0d',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '4px'
-                  }}
-                >
-                  <span style={{ fontSize: '13px' }}>
-                    {file.name} ({Math.round(file.size / 1024)} KB)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(i)}
-                    className="btn-danger"
-                    style={{ padding: '2px 8px', fontSize: '11px' }}
-                  >
-                    Remove
-                  </button>
+                  {/* 9. File Upload */}
+                  {q.question_type === 'file_upload' && (
+                    <div>
+                      <input
+                        id={`field_${idx}`}
+                        type="file"
+                        multiple
+                        onChange={handleFileChange}
+                        style={{ padding: '8px', cursor: 'pointer', width: '100%' }}
+                      />
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        Limits: 5 MB per individual file • 30 MB combined per submission
+                      </div>
+                      {uploadError && <div className="form-error" style={{ marginTop: '6px' }}>{uploadError}</div>}
+                      {files.length > 0 && (
+                        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--color-green)', fontFamily: 'var(--font-mono)' }}>
+                            {files.length} {files.length === 1 ? 'file' : 'files'} attached • {(files.reduce((a, b) => a + (b.size || 0), 0) / (1024 * 1024)).toFixed(2)} MB / 30 MB combined
+                          </div>
+                          {files.map((f, fIdx) => (
+                            <div key={fIdx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: '#0d0d0d', border: '1px solid var(--border-subtle)', borderRadius: '4px' }}>
+                              <span style={{ fontSize: '12px' }}>{f.name} ({(f.size / (1024 * 1024) >= 1 ? `${(f.size / (1024 * 1024)).toFixed(2)} MB` : `${Math.round(f.size / 1024)} KB`)})</span>
+                              <button type="button" onClick={() => removeFile(fIdx)} className="btn-danger" style={{ padding: '2px 6px', fontSize: '10px' }}>Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
 
-          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '24px', marginTop: '24px' }}>
+          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '24px', marginTop: '30px' }}>
             <button
               type="submit"
               className="btn-primary"

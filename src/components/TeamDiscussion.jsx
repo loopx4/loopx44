@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DataService } from '../services/dataService';
+import ConfirmationModal from './ConfirmationModal';
 
 export default function TeamDiscussion({ currentUserDisplayName, currentUserRole }) {
   const [messages, setMessages] = useState([]);
@@ -10,6 +11,15 @@ export default function TeamDiscussion({ currentUserDisplayName, currentUserRole
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Edit Message State
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Delete Message State
+  const [messageToDelete, setMessageToDelete] = useState(null);
+  const [isDeletingMsg, setIsDeletingMsg] = useState(false);
 
   const loadData = async () => {
     try {
@@ -98,6 +108,41 @@ export default function TeamDiscussion({ currentUserDisplayName, currentUserRole
   const handleInsertMention = (profileName) => {
     setInputText((prev) => `${prev}@${profileName} `);
     setShowMentionMenu(false);
+  };
+
+  const handleStartEdit = (msg) => {
+    setEditingMessageId(msg.id);
+    setEditingText(msg.message);
+  };
+
+  const handleSaveEdit = async (msgId) => {
+    const clean = editingText.trim();
+    if (!clean) return;
+    setIsSavingEdit(true);
+    try {
+      await DataService.editChatMessage(msgId, clean);
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, message: clean, is_edited: true } : m)));
+      setEditingMessageId(null);
+      setEditingText('');
+    } catch (err) {
+      console.error('Failed to edit chat message:', err);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!messageToDelete) return;
+    setIsDeletingMsg(true);
+    try {
+      await DataService.deleteChatMessage(messageToDelete.id);
+      setMessages((prev) => prev.filter((m) => m.id !== messageToDelete.id));
+      setMessageToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete chat message:', err);
+    } finally {
+      setIsDeletingMsg(false);
+    }
   };
 
   // Render message body with @mentions highlighted in LoopX green
@@ -245,9 +290,45 @@ export default function TeamDiscussion({ currentUserDisplayName, currentUserRole
                     position: 'relative'
                   }}
                 >
-                  <div>{renderMessageBody(msg.message)}</div>
+                  {editingMessageId === msg.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <input
+                        type="text"
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        style={{ width: '100%', padding: '6px 10px', fontSize: '13px' }}
+                        autoFocus
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingMessageId(null)}
+                          className="btn-secondary"
+                          style={{ padding: '3px 8px', fontSize: '11px' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEdit(msg.id)}
+                          className="btn-primary"
+                          disabled={isSavingEdit || !editingText.trim()}
+                          style={{ padding: '3px 10px', fontSize: '11px' }}
+                        >
+                          {isSavingEdit ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {renderMessageBody(msg.message)}
+                      {msg.is_edited && (
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '6px' }}>(edited)</span>
+                      )}
+                    </div>
+                  )}
 
-                  <div style={{ marginTop: '6px', textAlign: 'right' }}>
+                  <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button
                       type="button"
                       onClick={() => setReplyingTo(msg)}
@@ -262,6 +343,38 @@ export default function TeamDiscussion({ currentUserDisplayName, currentUserRole
                     >
                       ↩ Reply
                     </button>
+                    {(isMe || currentUserRole === 'owner') && editingMessageId !== msg.id && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(msg)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            padding: '0'
+                          }}
+                        >
+                          ✎ Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMessageToDelete(msg)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#f87171',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            padding: '0'
+                          }}
+                        >
+                          ✕ Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -377,6 +490,19 @@ export default function TeamDiscussion({ currentUserDisplayName, currentUserRole
           {isSending ? 'Sending...' : 'Send'}
         </button>
       </form>
+
+      {/* Confirmation Modal for Message Deletion */}
+      <ConfirmationModal
+        isOpen={Boolean(messageToDelete)}
+        title="Delete Team Message"
+        message="Are you sure you want to permanently delete this message from the team discussion?"
+        itemName={messageToDelete ? `"${messageToDelete.message.slice(0, 80)}${messageToDelete.message.length > 80 ? '...' : ''}"` : ''}
+        itemDetails={messageToDelete ? `Sent by ${messageToDelete.sender_name} at ${new Date(messageToDelete.created_at).toLocaleTimeString()}` : ''}
+        confirmLabel="Delete Message"
+        isProcessing={isDeletingMsg}
+        onCancel={() => setMessageToDelete(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

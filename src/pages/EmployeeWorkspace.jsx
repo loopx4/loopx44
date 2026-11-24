@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { DataService } from '../services/dataService';
 import SubmissionDetailModal from '../components/SubmissionDetailModal';
 import TeamDiscussion from '../components/TeamDiscussion';
+import FormBuilder from '../components/FormBuilder';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 export default function EmployeeWorkspace() {
   const { activeProfile } = useAuth();
@@ -18,6 +20,10 @@ export default function EmployeeWorkspace() {
   const [generatingLink, setGeneratingLink] = useState(false);
   const [latestGeneratedLink, setLatestGeneratedLink] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Link Deletion State
+  const [linkToDelete, setLinkToDelete] = useState(null);
+  const [isDeletingLink, setIsDeletingLink] = useState(false);
 
   const loadEmployeeData = async () => {
     if (!activeProfile) return;
@@ -65,6 +71,20 @@ export default function EmployeeWorkspace() {
     navigator.clipboard.writeText(text);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleConfirmDeleteLink = async () => {
+    if (!linkToDelete) return;
+    setIsDeletingLink(true);
+    try {
+      await DataService.deleteClientLink(linkToDelete.id);
+      setLinkToDelete(null);
+      await loadEmployeeData();
+    } catch (err) {
+      console.error('Failed to delete client link:', err);
+    } finally {
+      setIsDeletingLink(false);
+    }
   };
 
   // Stats calculation
@@ -243,71 +263,76 @@ export default function EmployeeWorkspace() {
       )}
 
       {/* ----------------------------------------------------------------------
-          TAB 2: CREATE CLIENT LINK
+          TAB 2: CREATE CLIENT LINK (FORM BUILDER)
          ---------------------------------------------------------------------- */}
       {activeTab === 'create_link' && (
-        <div style={{ maxWidth: '680px', margin: '0 auto' }}>
-          <div className="card" style={{ padding: '32px' }}>
-            <h2 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>Create Private Client Link</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '24px' }}>
-              Generates a private, unpredictable URL attributed directly to your profile (<strong>{activeProfile.name}</strong>).
-              Share this link with your client to complete their intake form.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleGenerateLink}
-              disabled={generatingLink}
-              className="btn-primary"
-              style={{ padding: '12px 20px', width: '100%', marginBottom: '24px' }}
+        <div>
+          {latestGeneratedLink && (
+            <div
+              style={{
+                maxWidth: '860px',
+                margin: '0 auto 24px auto',
+                backgroundColor: '#0d0d0d',
+                border: '1px solid var(--border-green)',
+                borderRadius: '6px',
+                padding: '24px'
+              }}
             >
-              {generatingLink ? 'Generating Secure Token...' : '+ Generate New Client Link'}
-            </button>
-
-            {latestGeneratedLink && (
-              <div
-                style={{
-                  backgroundColor: '#0d0d0d',
-                  border: '1px solid var(--border-green)',
-                  borderRadius: '6px',
-                  padding: '20px',
-                  marginBottom: '20px'
-                }}
-              >
-                <div style={{ fontSize: '12px', color: 'var(--color-green)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                  ✓ Link Generated Successfully
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--color-green)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                  ✓ Client Link Successfully Generated
                 </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-white)', marginBottom: '12px', wordBreak: 'break-all' }}>
-                  <code style={{ color: 'var(--color-green)', fontFamily: 'var(--font-mono)', fontSize: '14px' }}>
-                    {latestGeneratedLink.url}
-                  </code>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(latestGeneratedLink.url)}
-                    className="btn-primary"
-                    style={{ flex: 1 }}
-                  >
-                    {copiedLink ? '✓ Copied to Clipboard!' : 'Copy Link'}
-                  </button>
-                  <a
-                    href={latestGeneratedLink.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn-secondary"
-                  >
-                    Open Link ↗
-                  </a>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setLatestGeneratedLink(null)}
+                  className="btn-secondary"
+                  style={{ padding: '2px 8px', fontSize: '11px' }}
+                >
+                  ✕ Dismiss
+                </button>
               </div>
-            )}
 
-            {/* Generated links list */}
-            {createdLinks.length > 0 && (
-              <div style={{ marginTop: '30px', borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
-                <h3 style={{ fontSize: '13px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '12px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-white)', marginBottom: '14px', wordBreak: 'break-all' }}>
+                <code style={{ color: 'var(--color-green)', fontFamily: 'var(--font-mono)', fontSize: '15px' }}>
+                  {latestGeneratedLink.url}
+                </code>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(latestGeneratedLink.url)}
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                >
+                  {copiedLink ? '✓ Copied to Clipboard!' : 'Copy Link'}
+                </button>
+                <a
+                  href={latestGeneratedLink.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary"
+                >
+                  Open Link ↗
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Shared Form Questionnaire Builder */}
+          <FormBuilder
+            activeProfile={activeProfile}
+            onLinkGenerated={(newLink) => {
+              setLatestGeneratedLink(newLink);
+              loadEmployeeData();
+            }}
+          />
+
+          {/* Generated links history list */}
+          {createdLinks.length > 0 && (
+            <div style={{ maxWidth: '860px', margin: '30px auto 0 auto' }}>
+              <div className="card" style={{ padding: '24px' }}>
+                <h3 style={{ fontSize: '13px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '14px' }}>
                   Your Active Generated Links ({createdLinks.length})
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -320,36 +345,65 @@ export default function EmployeeWorkspace() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          padding: '10px 14px',
+                          padding: '12px 16px',
                           backgroundColor: '#090909',
                           border: '1px solid var(--border-subtle)',
-                          borderRadius: '4px'
+                          borderRadius: '4px',
+                          gap: '12px',
+                          flexWrap: 'wrap'
                         }}
                       >
                         <div>
-                          <span className={`badge ${link.status === 'submitted' ? 'badge-completed' : 'badge-pending'}`} style={{ marginRight: '8px' }}>
-                            {link.status === 'submitted' ? `Submitted: ${link.queue_number}` : 'Awaiting Submission'}
-                          </span>
-                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                            {new Date(link.created_at).toLocaleDateString()}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <code className="mono-token">{link.token.substring(0, 12)}...</code>
+                            <span className={`badge ${link.status === 'submitted' ? 'badge-completed' : 'badge-pending'}`}>
+                              {link.status === 'submitted' ? 'Submitted' : 'Awaiting Submission'}
+                            </span>
+                            {link.queue_number && (
+                              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-green)', fontWeight: 700, fontSize: '12px' }}>
+                                [{link.queue_number}]
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            Created: {new Date(link.created_at).toLocaleString()}
+                          </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(linkUrl)}
-                          className="btn-secondary"
-                          style={{ padding: '4px 8px', fontSize: '11px' }}
-                        >
-                          Copy URL
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(linkUrl)}
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                          >
+                            Copy Link
+                          </button>
+                          <a
+                            href={linkUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                          >
+                            Open ↗
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setLinkToDelete(link)}
+                            className="btn-danger"
+                            style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#3f0d0d', borderColor: '#7f1d1d' }}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -506,8 +560,25 @@ export default function EmployeeWorkspace() {
             setSelectedSubmission(updated);
             loadEmployeeData();
           }}
+          onSubmissionDeleted={() => {
+            setSelectedSubmission(null);
+            loadEmployeeData();
+          }}
         />
       )}
+
+      {/* Confirmation Modal for Client Link Deletion */}
+      <ConfirmationModal
+        isOpen={Boolean(linkToDelete)}
+        title="Delete Client Link"
+        message="Are you sure you want to permanently delete this client link? The URL token will no longer accept client submissions."
+        itemName={`Token: ${linkToDelete?.token.substring(0, 16)}...`}
+        itemDetails={linkToDelete ? `Status: ${linkToDelete.status} • Created: ${new Date(linkToDelete.created_at).toLocaleString()}` : ''}
+        confirmLabel="Delete Link"
+        isProcessing={isDeletingLink}
+        onCancel={() => setLinkToDelete(null)}
+        onConfirm={handleConfirmDeleteLink}
+      />
     </div>
   );
 }

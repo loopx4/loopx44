@@ -1,28 +1,32 @@
-# Dev-only screenshot fixtures (not part of the app)
-test-harness/
+# Dependencies
+node_modules/
 
-# Node & Build
-node_modules
-dist
-dist-ssr
+# Production build outputs
+dist/
+dist-ssr/
+
+# Test coverage
+coverage/
+
+# Environment variables & secrets (protected from git)
+.env
+.env.*
+!.env.example
 *.local
 
-# Environment variables (Credentials protected)
-.env
-.env.production
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Editor directories
+# System & Editor files
+.DS_Store
+Thumbs.db
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
