@@ -1,20 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authenticateUser } from '../config/auth.config';
+import { authenticateUser, fetchServerSession, logoutServerSession } from '../config/auth.config';
 
 const AuthContext = createContext(null);
-
-const SESSION_KEY = 'loopx_auth_session';
 const PROFILE_KEY = 'loopx_selected_profile';
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(() => {
-    try {
-      const stored = localStorage.getItem(SESSION_KEY);
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [session, setSession] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [activeProfile, setActiveProfile] = useState(() => {
     try {
@@ -25,8 +17,42 @@ export function AuthProvider({ children }) {
     }
   });
 
-  // login() is async because authenticateUser() uses SubtleCrypto (async hash).
-  // Always call with: const result = await login(username, password);
+  // Verify server-issued session on initial mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkServerSession() {
+      try {
+        const verifiedSession = await fetchServerSession();
+        if (isMounted) {
+          if (verifiedSession && verifiedSession.role) {
+            setSession(verifiedSession);
+          } else {
+            setSession(null);
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setSession(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    checkServerSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  /**
+   * Logs in with username & password via the secure backend API.
+   * On success, backend sets an httpOnly session cookie and returns user session.
+   */
   const login = async (username, password) => {
     const result = await authenticateUser(username, password);
     if (result.success) {
@@ -34,11 +60,9 @@ export function AuthProvider({ children }) {
         role: result.role,
         username: result.username,
         displayName: result.displayName,
-        permissions: result.permissions,
-        loginAt: new Date().toISOString()
+        permissions: result.permissions
       };
       setSession(newSession);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
 
       // If owner logs in, clear any previously selected employee profile
       if (result.role === 'owner') {
@@ -59,12 +83,34 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
+  /**
+   * Terminates session on the backend and clears client state.
+   */
+  const logout = async () => {
+    await logoutServerSession();
     setSession(null);
     setActiveProfile(null);
-    localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(PROFILE_KEY);
   };
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          backgroundColor: '#000000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted, #888888)',
+          fontSize: '14px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
+        }}
+      >
+        Authenticating...
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider

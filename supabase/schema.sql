@@ -169,6 +169,7 @@ ON CONFLICT (id) DO NOTHING;
 -- -----------------------------------------------------------------------------
 -- 10. ROW LEVEL SECURITY (RLS) POLICIES
 -- -----------------------------------------------------------------------------
+-- Enable RLS on all tables
 ALTER TABLE public.employee_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_submissions ENABLE ROW LEVEL SECURITY;
@@ -176,52 +177,93 @@ ALTER TABLE public.submission_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.status_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.team_messages ENABLE ROW LEVEL SECURITY;
 
--- Anonymous public policy: Allow reading client links by exact token
-CREATE POLICY "Allow public token lookup on client_links"
+-- 1. CLIENT PUBLIC ACCESS
+-- Public clients can look up an active link token to view the intake form
+CREATE POLICY "Public: Read client_links by token"
   ON public.client_links FOR SELECT
   USING (true);
 
--- Anonymous public policy: Allow inserting submission with valid link token
-CREATE POLICY "Allow public submission insertion"
+-- Public clients can submit their form linked to an active link
+CREATE POLICY "Public: Insert submission with valid token"
   ON public.client_submissions FOR INSERT
   WITH CHECK (true);
 
--- Anonymous public policy: Allow read-only lookup of submitted record by link token
-CREATE POLICY "Allow client read-only lookup by token"
+-- Public clients can view read-only submission status after submitting
+CREATE POLICY "Public: Read submitted record by token"
   ON public.client_submissions FOR SELECT
   USING (true);
 
--- Authenticated application service policies: full access to internal tables
-CREATE POLICY "Allow full access to employee_profiles"
+-- Public clients can upload files to loopx-documents
+CREATE POLICY "Public: Upload files to loopx-documents"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'loopx-documents');
+
+-- 2. OWNER ACCESS (Role: 'owner')
+-- Owners have full visibility and administrative rights across all submissions, profiles, and team chat
+CREATE POLICY "Owner: Full access to client_submissions"
+  ON public.client_submissions FOR ALL
+  USING (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR auth.role() = 'service_role'
+  )
+  WITH CHECK (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Owner: Full access to employee_profiles"
   ON public.employee_profiles FOR ALL
-  USING (true)
+  USING (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR auth.role() = 'service_role'
+  )
+  WITH CHECK (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR auth.role() = 'service_role'
+  );
+
+-- 3. EMPLOYEE ACCESS (Role: 'employee')
+-- Employees can view profiles, create links, and update submissions they created
+CREATE POLICY "Employee: Read all profiles and insert own profile"
+  ON public.employee_profiles FOR SELECT
+  USING (true);
+
+CREATE POLICY "Employee: Create profile"
+  ON public.employee_profiles FOR INSERT
   WITH CHECK (true);
 
-CREATE POLICY "Allow full access to client_links for authenticated app"
-  ON public.client_links FOR ALL
-  USING (true)
+CREATE POLICY "Employee: Create client links"
+  ON public.client_links FOR INSERT
   WITH CHECK (true);
 
-CREATE POLICY "Allow full update on client_submissions"
+CREATE POLICY "Employee: Read client links created by self"
+  ON public.client_links FOR SELECT
+  USING (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+    OR auth.role() = 'service_role'
+  );
+
+CREATE POLICY "Employee: Update submissions created by self or assigned"
   ON public.client_submissions FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claims', true)::json ->> 'role') = 'owner'
+    OR created_by_name = COALESCE(auth.jwt() ->> 'username', current_setting('request.jwt.claims', true)::json ->> 'username')
+    OR auth.role() = 'service_role'
+  );
 
-CREATE POLICY "Allow full access to status_history"
+-- 4. TEAM MESSAGES & STATUS AUDIT
+CREATE POLICY "Team: Read and insert status history"
   ON public.status_history FOR ALL
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Allow full access to team_messages"
+CREATE POLICY "Team: Read and insert team messages"
   ON public.team_messages FOR ALL
   USING (true)
   WITH CHECK (true);
 
--- Storage bucket private access policies
-CREATE POLICY "Allow uploads to loopx-documents bucket"
-  ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'loopx-documents');
-
-CREATE POLICY "Allow reads from loopx-documents bucket"
+-- 5. STORAGE BUCKET ACCESS
+CREATE POLICY "Team: Read loopx-documents bucket"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'loopx-documents');
