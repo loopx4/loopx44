@@ -54,7 +54,8 @@ export default function EmployeeWorkspace() {
     setCopiedLink(false);
     try {
       const linkRecord = await DataService.createClientLink(activeProfile.id, activeProfile.name);
-      const fullUrl = `${window.location.origin}/submit/${linkRecord.token}`;
+      const subPath = window.location.pathname.startsWith('/loopx44') ? '/loopx44' : '';
+      const fullUrl = `${window.location.origin}${subPath}/submit/${linkRecord.token}`;
       setLatestGeneratedLink({
         ...linkRecord,
         url: fullUrl
@@ -337,7 +338,8 @@ export default function EmployeeWorkspace() {
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {createdLinks.map((link) => {
-                    const linkUrl = `${window.location.origin}/submit/${link.token}`;
+                    const subPath = window.location.pathname.startsWith('/loopx44') ? '/loopx44' : '';
+                    const linkUrl = `${window.location.origin}${subPath}/submit/${link.token}`;
                     return (
                       <div
                         key={link.id}

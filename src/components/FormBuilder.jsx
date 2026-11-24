@@ -149,7 +149,8 @@ export default function FormBuilder({ activeProfile, onLinkGenerated }) {
         activeProfile.name,
         questions
       );
-      const fullUrl = `${window.location.origin}/submit/${linkRecord.token}`;
+      const subPath = window.location.pathname.startsWith('/loopx44') ? '/loopx44' : '';
+      const fullUrl = `${window.location.origin}${subPath}/submit/${linkRecord.token}`;
       if (onLinkGenerated) {
         onLinkGenerated({
           ...linkRecord,

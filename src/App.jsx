@@ -36,9 +36,11 @@ export default function App() {
     };
   });
 
-  // Client-side navigation helper
-  const navigateTo = (path) => {
-    window.history.pushState({}, '', path);
+  // Client-side navigation helper that respects base subpath (e.g. /loopx44 on GitHub Pages)
+  const basePath = window.location.pathname.startsWith('/loopx44') ? '/loopx44' : '';
+  const navigateTo = (target) => {
+    const fullPath = target.startsWith('/') ? `${basePath}${target}` : target;
+    window.history.pushState({}, '', fullPath);
     setCurrentRoute({
       pathname: window.location.pathname,
       search: window.location.search,
@@ -69,10 +71,12 @@ export default function App() {
 
   // 1. PUBLIC ROUTE: Client Submission Form (/submit/:token or #/submit/:token or ?token=...)
   let clientToken = null;
-  if (path.startsWith('/submit/')) {
-    clientToken = path.replace('/submit/', '').split('/')[0];
-  } else if (hash.startsWith('#/submit/')) {
-    clientToken = hash.replace('#/submit/', '').split('/')[0];
+  const submitPathMatch = path.match(/\/submit\/([^/?#]+)/);
+  const submitHashMatch = hash.match(/#\/submit\/([^/?#]+)/);
+  if (submitPathMatch) {
+    clientToken = submitPathMatch[1];
+  } else if (submitHashMatch) {
+    clientToken = submitHashMatch[1];
   } else if (params.get('token')) {
     clientToken = params.get('token');
   }
@@ -99,8 +103,9 @@ export default function App() {
   }
 
   // 3. UNAUTHENTICATED ROUTES
-  // If user navigates explicitly to /login or #/login, or tries to access /owner or /employee:
-  const isLoginPage = path === '/login' || hash === '#/login' || path === '/owner' || path === '/employee';
+  // Normalize subpath (e.g. /loopx44 on GitHub Pages)
+  const normalizedPath = path.replace(/^\/loopx44/, '') || '/';
+  const isLoginPage = normalizedPath === '/login' || hash === '#/login' || normalizedPath === '/owner' || normalizedPath === '/employee';
 
   if (isLoginPage) {
     return <LoginPage onBackToHome={() => navigateTo('/')} />;

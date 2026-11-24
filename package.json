@@ -7,7 +7,7 @@
     "server": "node server/index.cjs",
     "client": "vite",
     "dev": "concurrently -k -n \"api,app\" -c \"cyan,magenta\" \"node server/index.cjs\" \"vite\"",
-    "build": "vite build",
+    "build": "vite build && cp dist/index.html dist/404.html",
     "preview": "vite preview",
     "test": "vitest run"
   },
